@@ -3,20 +3,20 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 model User {
-  id            String        @id @default(uuid())
-  email         String        @unique
-  name          String?
-  password      String
-  refreshToken  String?       
-
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  transactions  Transaction[]
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String?   
+  name         String
+  avatar       String?   
+  provider     String    @default("local")
+  refreshToken String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  transactions Transaction[]
 }
 
 model Transaction {
@@ -28,12 +28,10 @@ model Transaction {
   subcategory String?
   payment     PaymentMethod
   date        DateTime
-
   userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum TransactionType {

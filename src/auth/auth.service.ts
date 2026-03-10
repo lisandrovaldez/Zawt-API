@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
@@ -9,6 +10,24 @@ import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfigService } from '@nestjs/config';
+
+interface OAuthUserProfile {
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture: string | null;
+}
+
+export interface ValidatedUser {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    avatar: string | null;
+  };
+}
 
 @Injectable()
 export class AuthService {
@@ -19,6 +38,14 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
     const hash = await bcrypt.hash(dto.password, 10);
 
     const user = await this.prisma.user.create({
@@ -37,11 +64,13 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (!user) throw new UnauthorizedException();
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+
+    if (!user.password) throw new UnauthorizedException('Invalid credentials');
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
 
-    if (!isMatch) throw new UnauthorizedException();
+    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
     const tokens = await this.generateTokens(user.id, user.email);
 
@@ -86,7 +115,7 @@ export class AuthService {
     const payload = { sub: userId, email };
 
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get('JWT_SECRET'),
+      secret: this.config.get('JWT_ACCESS_SECRET'),
       expiresIn: '15m',
     });
 
@@ -108,5 +137,45 @@ export class AuthService {
       where: { id: userId },
       data: { refreshToken: hashedRefresh },
     });
+  }
+
+  async validateOAuthUser(profile: OAuthUserProfile): Promise<ValidatedUser> {
+    const { email, firstName, lastName, picture } = profile;
+
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          name: `${firstName} ${lastName}`.trim(),
+          password: null,
+          avatar: picture,
+          provider: 'google',
+        },
+      });
+    } else {
+      if (!user.avatar && picture) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { avatar: picture },
+        });
+      }
+    }
+
+    const tokens = await this.generateTokens(user.id, user.email);
+    await this.updateRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+      },
+    };
   }
 }

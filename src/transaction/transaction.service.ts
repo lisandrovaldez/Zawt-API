@@ -7,19 +7,28 @@ export class TransactionService {
   constructor(private prisma: PrismaService) {}
 
   async create(userId: string, dto: CreateTransactionDto) {
+    const { date, ...rest } = dto;
+
     return this.prisma.transaction.create({
       data: {
-        ...dto,
+        ...rest,
+        amount: dto.amount,
+        date: new Date(date),
         userId,
       },
     });
   }
 
   async findAll(userId: string) {
-    return this.prisma.transaction.findMany({
+    const transactions = await this.prisma.transaction.findMany({
       where: { userId },
       orderBy: { date: 'desc' },
     });
+
+    return transactions.map((transaction) => ({
+      ...transaction,
+      amount: Number(transaction.amount),
+    }));
   }
 
   async remove(userId: string, id: string) {

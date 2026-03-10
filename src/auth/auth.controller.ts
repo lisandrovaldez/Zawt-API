@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Res,
+  Get,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -6,6 +14,12 @@ import { type Response } from 'express';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthGuard } from '@nestjs/passport';
+import {
+  type RequestWithUser,
+  type RequestWithGoogleUser,
+  type RequestWithRefreshToken,
+} from './types/auth-request.types';
 
 @Controller('auth')
 export class AuthController {
@@ -25,11 +39,12 @@ export class AuthController {
   ) {
     const { accessToken, refreshToken } = await this.authService.login(dto);
 
-    res.cookie('refreshToken', refreshToken, {
+    res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: false, // true en producción (https)
+      secure: process.env.NODE_ENV === 'production', // true en producción
       sameSite: 'lax',
       path: '/auth/refresh',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return { accessToken };
@@ -38,21 +53,47 @@ export class AuthController {
   @UseGuards(JwtRefreshGuard)
   @ApiOperation({ summary: 'Refresh a user token' })
   @Post('refresh')
-  refresh(@Req() req) {
-    return this.authService.refreshTokens(req.user.sub, req.user.refreshToken);
+  refresh(@Req() req: RequestWithRefreshToken) {
+    return this.authService.refreshTokens(req.user.sub!, req.user.refreshToken);
   }
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
   @Post('logout')
-  async logout(@Req() req, @Res({ passthrough: true }) res: Response) {
-    await this.authService.logout(req.user.sub);
+  async logout(
+    @Req() req: RequestWithUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.logout(req.user.id);
 
-    res.clearCookie('refreshToken', {
+    res.clearCookie('refresh_token', {
       path: '/auth/refresh',
     });
 
     return { message: 'Logged out successfully' };
+  }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  async googleAuth() {}
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async googleAuthRedirect(
+    @Req() req: RequestWithGoogleUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken } = req.user;
+
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/auth/refresh',
+    });
+
+    return res.redirect(`http://localhost:5173/login?token=${accessToken}`);
   }
 }

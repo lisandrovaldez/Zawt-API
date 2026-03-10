@@ -1,4 +1,11 @@
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsDateString,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { TransactionType, PaymentMethod } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -9,6 +16,7 @@ export class CreateTransactionDto {
 
   @ApiProperty()
   @IsNumber()
+  @Type(() => Number)
   amount: number;
 
   @ApiProperty({ enum: TransactionType })
@@ -29,5 +37,6 @@ export class CreateTransactionDto {
   payment: PaymentMethod;
 
   @ApiProperty()
-  date: Date;
+  @IsDateString()
+  date: string;
 }
