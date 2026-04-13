@@ -94,6 +94,6 @@ export class AuthController {
       path: '/auth/refresh',
     });
 
-    return res.redirect(`http://localhost:5173/login?token=${accessToken}`);
+    return res.redirect(`https://zawt.vercel.app/login?token=${accessToken}`);
   }
 }
